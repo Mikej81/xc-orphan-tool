@@ -1,10 +1,8 @@
 const axios = require('axios');
 
 // Define API endpoint and token
-//const ORIGIN_URL = "https://<tenant_name>.console.ves.volterra.io/api"
-const ORIGIN_URL = "https://f5-sa.console.ves.volterra.io/api"
-//const API_TOKEN = "REPLACE WITH TOKEN" // https://docs.cloud.f5.com/docs/how-to/volterra-automation-tools/apis
-const API_TOKEN = "0WltVpM06IV8b0LVNdKy0sHtnXA="
+const ORIGIN_URL = "https://<tenant_name>.console.ves.volterra.io/api"
+const API_TOKEN = "REPLACE WITH TOKEN" // https://docs.cloud.f5.com/docs/how-to/volterra-automation-tools/apis
 
 // Configuration flags
 const PURGE_ORPHANS = false
