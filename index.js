@@ -16,6 +16,27 @@ const axiosInstance = axios.create({
     }
 });
 
+function getCurrentTimes() {
+    // Get the current date and time
+    let currentDate = new Date();
+
+    // Convert current date to ISO 8601 format with static milliseconds
+    let currentIsoDate = currentDate.toISOString();
+    let formattedCurrentDate = currentIsoDate.substring(0, currentIsoDate.indexOf('.')) + '.000Z';
+
+    // Subtract one hour
+    currentDate.setHours(currentDate.getHours() - 1);
+
+    // Convert date minus one hour to ISO 8601 format with static milliseconds
+    let minusOneHourIsoDate = currentDate.toISOString();
+    let formattedMinusOneHourDate = minusOneHourIsoDate.substring(0, minusOneHourIsoDate.indexOf('.')) + '.000Z';
+
+    return {
+        currentTime: formattedCurrentDate,
+        oneHourAgo: formattedMinusOneHourDate
+    };
+}
+
 // Function to fetch namespaces
 const fetchNamespaces = async () => {
     try {
@@ -236,7 +257,117 @@ const deleteOrphanedAppSetting = async (namespace, appSettingName) => {
 
 // Add in Health Checks maybe?
 
-const main = async () => {
+// Function to process command line arguments
+async function processArguments() {
+    const args = process.argv.slice(2);
+    let req_id = null;
+    let req_id_provided = false;
+    let audit_orphans = false;
+
+    // Check if specific arguments are provided and extract values
+    args.forEach(arg => {
+        if (arg.startsWith('--query-req-id=')) {
+            const splitArg = arg.split('=');
+            if (splitArg.length === 2 && splitArg[1]) {
+                req_id = splitArg[1];
+                req_id_provided = true;
+            }
+        } else if (arg === '--audit-orphans') {
+            audit_orphans = true;
+        }
+    });
+
+    // Run main audit application logic if --audit-orphans is provided
+    if (audit_orphans) {
+        try {
+            await main();
+        } catch (error) {
+            console.error("Error in main function:", error);
+        }
+    }
+
+    // Additional logic for req_id, if provided and valid
+    if (req_id_provided && req_id) {
+        try {
+            const data = await queryReqId(req_id);
+            console.log(data);
+        } catch (error) {
+            console.error('Error querying req_id:', req_id, error);
+        }
+    } else if (req_id_provided && !req_id) {
+        console.error("No value provided for --query-req-id. Please specify a req_id.");
+    }
+
+    if (!audit_orphans && !req_id_provided) {
+        console.log("No valid arguments provided. Use --audit-orphans or --query-req-id=<req_id>.");
+    }
+}
+
+
+// Function to query specific req_id across all namespaces
+async function queryReqId(req_id) {
+    try {
+        const namespaces = await fetchNamespaces();
+        let results = [];
+
+        const times = getCurrentTimes();
+
+        for (let namespace of namespaces) {
+            if (namespace != 'system') {
+
+                const loadBalancerNames = await fetchLoadBalancers(namespace); // Fetch load balancer names for the namespace
+
+                for (let loadBalancerName of loadBalancerNames) {
+
+                    // Build the query including the load balancer name
+                    //let query = `'{vh_name=\\"${loadBalancerName}\\",req_id=\\"${req_id}\\",sec_event_type=~\\"waf_sec_event|bot_defense_sec_event|api_sec_event|svc_policy_sec_event\\"}'`;
+
+
+                    // Construct data object
+                    let data = {
+                        ags: {},
+                        namespace: namespace,
+                        query: '{ req_id=\"' + req_id + '\" }',
+                        start_time: times.oneHourAgo,
+                        end_time: times.currentTime
+                    };
+
+                    // Manually serialize object to JSON
+                    let jsonData = JSON.stringify(data);
+                    //console.log(jsonData);
+
+                    const response = await axiosInstance.post(ORIGIN_URL + `/data/namespaces/${namespace}/app_security/events`, jsonData, {
+                        headers: {
+                            'Content-Type': 'application/json'
+                        }
+                    });
+
+                    // const response = await fetch(ORIGIN_URL + `/data/namespaces/${namespace}/app_security/events`, {
+                    //     method: "POST",
+                    //     body: jsonData
+                    // })
+
+                    //console.log({ namespace: namespace, data: response.data });
+
+                    if (response.data.total_hits != '0') {
+                        results.push({ namespace: namespace, loadBalancer: loadBalancerName, data: response.data });
+                    }
+
+                }
+
+            }
+        }
+        //console.log(times.oneHourAgo);
+        //console.log(times.currentTime);
+        return results;
+
+    } catch (error) {
+        console.error('Error querying req_id:', req_id, 'error:', error);
+        throw error;
+    }
+}
+
+async function main() {
     try {
         const namespaces = await fetchNamespaces();
 
@@ -331,5 +462,5 @@ const main = async () => {
     }
 };
 
-main();
-
+// Run the script based on the command line arguments
+processArguments();
