@@ -67,6 +67,5 @@ node.js index.js --query-req-id=<request ID> (OPTIONAL) --time=xxh/xxd
 
 ## To Do
 
-* add option to show events for --query-req-id
 * add argument to set purge value
 * clean up code and outputs
