@@ -1,8 +1,10 @@
 const axios = require('axios');
 
 // Define API endpoint and token
-const ORIGIN_URL = "https://<tenant_name>.console.ves.volterra.io/api"
-const API_TOKEN = "REPLACE WITH TOKEN" // https://docs.cloud.f5.com/docs/how-to/volterra-automation-tools/apis
+//const ORIGIN_URL = "https://<tenant_name>.console.ves.volterra.io/api"
+const ORIGIN_URL = "https://f5-sa.console.ves.volterra.io/api"
+//const API_TOKEN = "REPLACE WITH TOKEN" // https://docs.cloud.f5.com/docs/how-to/volterra-automation-tools/apis
+const API_TOKEN = "0WltVpM06IV8b0LVNdKy0sHtnXA="
 
 // Configuration flags
 const PURGE_ORPHANS = false
@@ -16,25 +18,62 @@ const axiosInstance = axios.create({
     }
 });
 
-function getCurrentTimes() {
-    // Get the current date and time
+function getCurrentTimes(timeValue = null) {
     let currentDate = new Date();
+    let formattedCurrentDate = currentDate.toISOString().split('.')[0] + '.000Z';
 
-    // Convert current date to ISO 8601 format with static milliseconds
-    let currentIsoDate = currentDate.toISOString();
-    let formattedCurrentDate = currentIsoDate.substring(0, currentIsoDate.indexOf('.')) + '.000Z';
+    //console.log(timeValue);
 
-    // Subtract one hour
-    currentDate.setHours(currentDate.getHours() - 1);
+    // Determine the amount to subtract
+    let subtractValue = 1; // Default to 1 hour
+    let subtractUnit = 'hours';
 
-    // Convert date minus one hour to ISO 8601 format with static milliseconds
-    let minusOneHourIsoDate = currentDate.toISOString();
-    let formattedMinusOneHourDate = minusOneHourIsoDate.substring(0, minusOneHourIsoDate.indexOf('.')) + '.000Z';
+    if (timeValue) {
+        // Parse the time value
+        const match = /^(\d+)([hd])$/.exec(timeValue);
+        if (match) {
+            subtractValue = parseInt(match[1], 10);
+            subtractUnit = match[2] === 'd' ? 'days' : 'hours';
+        } else {
+            throw new Error('Invalid time format.');
+        }
+    }
+
+    // Subtract the time
+    if (subtractUnit === 'hours') {
+        currentDate.setHours(currentDate.getHours() - subtractValue);
+    } else { // 'days'
+        currentDate.setDate(currentDate.getDate() - subtractValue);
+    }
+
+    let formattedPastDate = currentDate.toISOString().split('.')[0] + '.000Z';
+    //console.log(formattedPastDate);
+    //console.log(formattedCurrentDate);
 
     return {
         currentTime: formattedCurrentDate,
-        oneHourAgo: formattedMinusOneHourDate
+        pastTime: formattedPastDate
     };
+}
+
+function parseTimeArgument(timeArg) {
+    const timeRegex = /^(\d+)([hd])$/; // Regex to match the format "number" followed by "h" or "d"
+    const match = timeRegex.exec(timeArg);
+
+    if (!match) {
+        throw new Error('Invalid time format. Use "h" for hours or "d" for days, e.g., 24h or 15d.');
+    }
+
+    const value = parseInt(match[1], 10);
+    const unit = match[2];
+
+    if (unit === 'h' && value > 24) {
+        throw new Error('The maximum allowed time in hours is 24.');
+    } else if (unit === 'd' && value > 30) {
+        throw new Error('The maximum allowed time in days is 30.');
+    }
+
+    return `${value}${unit}`;
 }
 
 // Function to fetch namespaces
@@ -263,6 +302,7 @@ async function processArguments() {
     let req_id = null;
     let req_id_provided = false;
     let audit_orphans = false;
+    let timeValue = null;
 
     // Check if specific arguments are provided and extract values
     args.forEach(arg => {
@@ -274,6 +314,14 @@ async function processArguments() {
             }
         } else if (arg === '--audit-orphans') {
             audit_orphans = true;
+        }
+        if (arg.startsWith('--time=')) {
+            const timeArg = arg.split('=')[1];
+            // Validate and parse the time argument
+            if (timeArg) {
+                // Implement your validation logic here
+                timeValue = parseTimeArgument(timeArg);
+            }
         }
     });
 
@@ -289,7 +337,14 @@ async function processArguments() {
     // Additional logic for req_id, if provided and valid
     if (req_id_provided && req_id) {
         try {
-            const data = await queryReqId(req_id);
+            let data;
+            if (timeValue) {
+                //console.log(timeValue);
+                data = await queryReqId(req_id, timeValue);
+            } else {
+                //console.log(timeValue);
+                data = await queryReqId(req_id);
+            }
             console.log(data);
         } catch (error) {
             console.error('Error querying req_id:', req_id, error);
@@ -305,12 +360,12 @@ async function processArguments() {
 
 
 // Function to query specific req_id across all namespaces
-async function queryReqId(req_id) {
+async function queryReqId(req_id, timeValue = null) {
     try {
         const namespaces = await fetchNamespaces();
         let results = [];
 
-        const times = getCurrentTimes();
+        const times = getCurrentTimes(timeValue);
 
         for (let namespace of namespaces) {
             if (namespace != 'system') {
@@ -318,22 +373,19 @@ async function queryReqId(req_id) {
                 const loadBalancerNames = await fetchLoadBalancers(namespace); // Fetch load balancer names for the namespace
 
                 for (let loadBalancerName of loadBalancerNames) {
-
-                    // Build the query including the load balancer name
-                    //let query = `'{vh_name=\\"${loadBalancerName}\\",req_id=\\"${req_id}\\",sec_event_type=~\\"waf_sec_event|bot_defense_sec_event|api_sec_event|svc_policy_sec_event\\"}'`;
-
-
                     // Construct data object
-                    let data = {
+
+                    let queryData = {
                         ags: {},
                         namespace: namespace,
                         query: '{ req_id=\"' + req_id + '\" }',
-                        start_time: times.oneHourAgo,
+                        start_time: times.pastTime,
                         end_time: times.currentTime
                     };
 
                     // Manually serialize object to JSON
-                    let jsonData = JSON.stringify(data);
+                    let jsonData = JSON.stringify(queryData);
+
                     //console.log(jsonData);
 
                     const response = await axiosInstance.post(ORIGIN_URL + `/data/namespaces/${namespace}/app_security/events`, jsonData, {
@@ -341,13 +393,6 @@ async function queryReqId(req_id) {
                             'Content-Type': 'application/json'
                         }
                     });
-
-                    // const response = await fetch(ORIGIN_URL + `/data/namespaces/${namespace}/app_security/events`, {
-                    //     method: "POST",
-                    //     body: jsonData
-                    // })
-
-                    //console.log({ namespace: namespace, data: response.data });
 
                     if (response.data.total_hits != '0') {
                         results.push({ namespace: namespace, loadBalancer: loadBalancerName, data: response.data });
@@ -357,8 +402,7 @@ async function queryReqId(req_id) {
 
             }
         }
-        //console.log(times.oneHourAgo);
-        //console.log(times.currentTime);
+
         return results;
 
     } catch (error) {
