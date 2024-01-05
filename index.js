@@ -5,8 +5,8 @@ const ORIGIN_URL = "https://<tenant_name>.console.ves.volterra.io/api"
 const API_TOKEN = "REPLACE WITH TOKEN" // https://docs.cloud.f5.com/docs/how-to/volterra-automation-tools/apis
 
 // Configuration flags
-const PURGE_ORPHANS = false
-const SHOW_ALL_NAMESPACE = true
+let PURGE_ORPHANS = false; // Default value
+let SHOW_ALL_NAMESPACE = false; // Default value
 
 // Create an Axios instance for HTTP requests with headers
 const axiosInstance = axios.create({
@@ -312,6 +312,12 @@ async function processArguments() {
             }
         } else if (arg === '--audit-orphans') {
             audit_orphans = true;
+        }
+        if (arg === '--purge-orphans') {
+            PURGE_ORPHANS = true;
+        }
+        if (arg === '--show-all-namespaces') {
+            SHOW_ALL_NAMESPACE = true;
         }
         if (arg.startsWith('--time=')) {
             const timeArg = arg.split('=')[1];
