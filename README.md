@@ -35,12 +35,13 @@ There are now a few arguments that can be passed to the command.
 To get a report of existing orphaned objects use the following:
 
 ```bash
-node.js index.js --audit-orphans [--purge-orphans] [--show-all-namespaces]
+node.js index.js --audit-orphans [--purge-orphans] [--show-all-namespaces] [--show-protected]
 ```
 
 * --audit-orphans is required to audit / purge objects that are not currently referenced by any other objects.
 * --purge-orphans is optional, and will delete all orphaned objects
 * --show-all-namespaces is optional and will show all namespaces.
+* --show-protected is optional and will show all loadbalancers in a namespace that have security services enabled.
 
 Objects will not purge unless the value has been changed in the script variables or if you use the --purge-orphans argument.
 

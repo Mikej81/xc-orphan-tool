@@ -1,8 +1,8 @@
 const axios = require('axios');
 
 // Define API endpoint and token
-const ORIGIN_URL = "https://<tenant_name>.console.ves.volterra.io/api"
-const API_TOKEN = "REPLACE WITH TOKEN" // https://docs.cloud.f5.com/docs/how-to/volterra-automation-tools/apis
+//const ORIGIN_URL = "https://<tenant_name>.console.ves.volterra.io/api"
+//const API_TOKEN = "REPLACE WITH TOKEN" // https://docs.cloud.f5.com/docs/how-to/volterra-automation-tools/apis
 
 // Configuration flags
 let PURGE_ORPHANS = false; // Default value
@@ -125,6 +125,26 @@ const fetchLoadBalancerDetails = async (namespace, loadBalancerName) => {
         throw error;
     }
 };
+
+const fetchProtectedLoadBalancerDetails = async (namespace) => {
+    try {
+        const response = await axiosInstance.post(ORIGIN_URL + `/config/namespaces/${namespace}/http_loadbalancers/get_security_config`, { data: {} });
+        const protectedLoadBalancerDetails = response.data;
+
+        let lines = [];
+        for (const [key, value] of Object.entries(protectedLoadBalancerDetails)) {
+            if (Array.isArray(value) && value.length > 0) {
+                const formattedKey = key.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
+                lines.push(`${formattedKey}: ${JSON.stringify(value)}`);
+            }
+        }
+
+        return lines;
+    } catch (error) {
+        console.error(`Error fetching security details for namespace ${namespace}: ${error.message}`);
+        throw error;
+    }
+}
 
 
 const fetchAppSettings = async (namespace) => {
@@ -300,6 +320,7 @@ async function processArguments() {
     let req_id = null;
     let req_id_provided = false;
     let audit_orphans = false;
+    let show_protected = false;  // Initialize show_protected flag
     let timeValue = null;
 
     // Check if specific arguments are provided and extract values
@@ -312,14 +333,14 @@ async function processArguments() {
             }
         } else if (arg === '--audit-orphans') {
             audit_orphans = true;
-        }
-        if (arg === '--purge-orphans') {
+        } else if (arg === '--show-protected' && audit_orphans) {
+            // Set show_protected to true only if audit_orphans is also true
+            show_protected = true;
+        } else if (arg === '--purge-orphans') {
             PURGE_ORPHANS = true;
-        }
-        if (arg === '--show-all-namespaces') {
+        } else if (arg === '--show-all-namespaces') {
             SHOW_ALL_NAMESPACE = true;
-        }
-        if (arg.startsWith('--time=')) {
+        } else if (arg.startsWith('--time=')) {
             const timeArg = arg.split('=')[1];
             // Validate and parse the time argument
             if (timeArg) {
@@ -328,6 +349,9 @@ async function processArguments() {
             }
         }
     });
+
+    // Apply the show_protected flag
+    SHOW_PROTECTED = show_protected;
 
     // Run main audit application logic if --audit-orphans is provided
     if (audit_orphans) {
@@ -431,6 +455,7 @@ async function main() {
             const policiesWithNoReferringObjects = [];
             const appSettingsWithNoReferringObjects = [];
             const loadBalancersWithNoReferringObjects = []; // just sticking with naming convention...
+            const protectedLoadbalancers = [];
 
             for (let loadBalancerName of loadBalancerNames) {
                 const loadBalancerDetails = await fetchLoadBalancerDetails(namespace, loadBalancerName);
@@ -466,6 +491,13 @@ async function main() {
                     appSettingsWithNoReferringObjects.push(appSettingName);
                 }
             }
+            if (SHOW_PROTECTED) {
+                const protectedDetails = await fetchProtectedLoadBalancerDetails(namespace);
+                if (protectedDetails) {
+                    //console.log(protectedDetails);
+                    protectedLoadbalancers.push(protectedDetails);
+                }
+            }
             if (
                 SHOW_ALL_NAMESPACE ||
                 poolsWithNoReferringObjects.length > 0 ||
@@ -479,7 +511,9 @@ async function main() {
                     firewallsWithNoReferringObjects, `\n Service Policies with no referring objects:`,
                     policiesWithNoReferringObjects, `\n App Settings with no referring objects:`,
                     appSettingsWithNoReferringObjects, `\n Load Balancers Report:`,
-                    loadBalancersWithNoReferringObjects.map(lb => ({ name: lb.name, routeCount: lb.routeCount }))
+                    loadBalancersWithNoReferringObjects.map(lb => ({ name: lb.name, routeCount: lb.routeCount })),
+                    `\n  Protected Services: \n`,
+                    protectedLoadbalancers
                 );
             }
 
