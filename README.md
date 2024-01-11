@@ -1,6 +1,6 @@
 # F5 XC Node.JS Tool (Orphaned Object Cleaner & Req ID Search)
 
-Delete all orphaned objects across all Application Namespaces.  To use, install, configure API URL, populate token, run code.
+Report / Audit all application namespaces in a tenant.  Delete all orphaned objects across all Application Namespaces.  To use, install, configure API URL, populate token, run code.
 
 Getting set up to use F5 Distributed Cloud APIs:  <https://docs.cloud.f5.com/docs/how-to/volterra-automation-tools/apis>
 
